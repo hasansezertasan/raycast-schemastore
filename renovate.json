@@ -2,5 +2,12 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "local>hasansezertasan/renovate-config"
+  ],
+  "packageRules": [
+    {
+      "description": "Hold typescript below 6.1 until @raycast/eslint-config widens its `typescript` peer range (currently >=4.8.4 <6.1.0); newer versions make npm fail with ERESOLVE when regenerating package-lock.json",
+      "matchPackageNames": ["typescript"],
+      "allowedVersions": "<6.1.0"
+    }
   ]
 }
