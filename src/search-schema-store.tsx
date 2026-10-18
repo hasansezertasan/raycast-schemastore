@@ -25,7 +25,7 @@ export default function Command() {
           icon={Icon.Code}
           title={schema.name}
           subtitle={schema.description}
-          keywords={schema.fileMatch}
+          keywords={[...(schema.fileMatch ?? []), ...(schema.description ? [schema.description] : [])]}
           accessories={schema.fileMatch?.slice(0, 2).map((pattern) => ({ tag: pattern }))}
           actions={
             <ActionPanel>
