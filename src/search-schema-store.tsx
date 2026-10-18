@@ -19,7 +19,7 @@ export default function Command() {
 
   return (
     <List isLoading={isLoading} searchBarPlaceholder="Filter schemas by name, description, or fileMatch…">
-      {(error || !isLoading) && (
+      {!isLoading && (
         <List.EmptyView
           icon={error ? Icon.ExclamationMark : Icon.MagnifyingGlass}
           title={error ? "Couldn't Load Schemas" : "No Schemas Found"}
