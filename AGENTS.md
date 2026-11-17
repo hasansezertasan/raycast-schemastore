@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A Raycast extension that searches the [SchemaStore](https://www.schemastore.org) catalog (`https://www.schemastore.org/api/json/catalog.json`) for JSON schemas. Published under the `perishdev` owner in the Raycast Store.
+A Raycast extension that searches the [SchemaStore](https://www.schemastore.org) catalog (`https://www.schemastore.org/api/json/catalog.json`) for JSON schemas. Published in the Raycast Store under the `hasansezertasan` author (`author` in `package.json`, no `owner`): https://raycast.com/hasansezertasan/schemastore.
 
 ## Commands
 
