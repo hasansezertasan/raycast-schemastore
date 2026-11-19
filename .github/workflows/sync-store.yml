@@ -1,0 +1,145 @@
+---
+name: Sync Store edits
+on:
+  # Weekly: pull edits Raycast maintainers made to this extension directly in
+  # raycast/extensions (after the last publish) into one PR, so the next
+  # `npm run publish` does not stop on them. workflow_dispatch allows a manual run.
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+permissions: {}
+jobs:
+  sync:
+    name: Sync Store edits
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write  # push the sync branch
+      pull-requests: write  # open or update the pull request
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+        with:
+          path: repo
+          persist-credentials: false
+      - name: Find the last publish in the Store
+        id: store
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          name=$(jq -r .name repo/package.json)
+          # Newest commit first. The last publish is the newest "Add/Update <name>
+          # extension" commit; anything after it was made by someone else.
+          commits=$(gh api "repos/raycast/extensions/commits?path=extensions/${name}&per_page=100")
+          base=$(jq -r --arg re "^(Add|Update) ${name} extension\\b" \
+            'first(.[] | select(.commit.message | test($re)) | .sha) // empty' <<<"$commits")
+          if [ -z "$base" ]; then
+            echo "::error::No publish commit for ${name} in the last 100 Store commits"
+            exit 1
+          fi
+          {
+            echo "folder=extensions/${name}"
+            echo "base=${base}"
+            echo "head=$(jq -r '.[0].sha' <<<"$commits")"
+          } >>"$GITHUB_OUTPUT"
+      - name: Check out the Store at the last publish
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+        with:
+          repository: raycast/extensions
+          ref: ${{ steps.store.outputs.base }}
+          path: store-base
+          sparse-checkout: ${{ steps.store.outputs.folder }}
+          filter: blob:none
+          persist-credentials: false
+      - name: Check out the Store now
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+        with:
+          repository: raycast/extensions
+          ref: ${{ steps.store.outputs.head }}
+          path: store-head
+          sparse-checkout: ${{ steps.store.outputs.folder }}
+          filter: blob:none
+          persist-credentials: false
+      - name: Merge Store edits into the repository
+        id: merge
+        working-directory: repo
+        env:
+          FOLDER: ${{ steps.store.outputs.folder }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          base_dir="${GITHUB_WORKSPACE}/store-base/${FOLDER}"
+          head_dir="${GITHUB_WORKSPACE}/store-head/${FOLDER}"
+
+          # Turn a Store folder into a tree object in this repository.
+          snapshot() {
+            local index="${RUNNER_TEMP}/snapshot-index"
+            rm -f "$index"
+            GIT_INDEX_FILE="$index" git --work-tree="$1" add -A
+            GIT_INDEX_FILE="$index" git write-tree
+          }
+
+          # Commit "last publish" and "Store now" as parent and child, then
+          # cherry-pick the child: git applies only the Store's own edits with a
+          # 3-way merge, keeping unpublished work here and writing conflict markers
+          # where both sides changed the same lines.
+          base=$(git commit-tree "$(snapshot "$base_dir")" -m "Store at last publish")
+          head=$(git commit-tree "$(snapshot "$head_dir")" -p "$base" -m "Store now")
+          conflicts=""
+          if ! git cherry-pick --no-commit --allow-empty "$head"; then
+            conflicts=$(git diff --name-only --diff-filter=U | xargs)
+            if [ -z "$conflicts" ]; then
+              echo "::error::git cherry-pick failed without conflicts"
+              exit 1
+            fi
+            # Only both-modified/both-added conflicts (UU/AA) get markers a
+            # reviewer can resolve in the PR. Modify/delete and similar ones do
+            # not, and `git add -A` would silently keep one side, so stop here.
+            unmarked=$(git status --porcelain | awk '$1 ~ /^(DD|AU|UD|UA|DU)$/ { print $2 }' | xargs)
+            if [ -n "$unmarked" ]; then
+              echo "::error::Resolve by hand (changed on one side, deleted on the other): ${unmarked}"
+              exit 1
+            fi
+          fi
+
+          # The Store fills in {PR_MERGE_DATE} inside the publish commit itself, so
+          # the cherry-pick never sees it: copy every dated heading over.
+          if [ -f CHANGELOG.md ] && [ -f "$head_dir/CHANGELOG.md" ]; then
+            grep -E '^## \[.+\] - [0-9]{4}-[0-9]{2}-[0-9]{2}$' "$head_dir/CHANGELOG.md" |
+              while IFS= read -r dated; do
+                awk -v want="${dated% - *} - {PR_MERGE_DATE}" -v dated="$dated" \
+                  '$0 == want { $0 = dated } 1' CHANGELOG.md >"${RUNNER_TEMP}/CHANGELOG.md"
+                cat "${RUNNER_TEMP}/CHANGELOG.md" >CHANGELOG.md
+              done
+          fi
+
+          # Stage conflicted files with their markers and leave the cherry-pick
+          # state, so the PR action can commit them (and a human resolves them
+          # in the draft PR).
+          git add -A
+          git cherry-pick --quit
+          git status --short
+
+          body="Brings in edits made to this extension in raycast/extensions after the last publish ([Store history](https://github.com/raycast/extensions/commits/main/${FOLDER})), so the next \`npm run publish\` does not stop on them."
+          if [ -n "$conflicts" ]; then
+            body="${body}
+
+          These files changed both here and in the Store and have conflict markers to resolve before merging: \`${conflicts// /\`, \`}\`"
+          fi
+          {
+            echo "conflicted=$([ -n "$conflicts" ] && echo true || echo false)"
+            echo "body<<EOF"
+            echo "$body"
+            echo "EOF"
+          } >>"$GITHUB_OUTPUT"
+      - name: Open or update the pull request
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1  # v8
+        with:
+          path: repo
+          # Conventional Branch name and Conventional Commits title, like the cobo PRs.
+          branch: chore/sync-store-edits
+          title: "chore: sync edits made in the Raycast Store"
+          commit-message: "chore: sync edits made in the Raycast Store"
+          body: ${{ steps.merge.outputs.body }}
+          # A PR with conflict markers must not be merged as is.
+          draft: ${{ steps.merge.outputs.conflicted }}
