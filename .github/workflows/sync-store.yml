@@ -92,6 +92,14 @@ jobs:
               echo "::error::git cherry-pick failed without conflicts"
               exit 1
             fi
+            # Only both-modified/both-added conflicts (UU/AA) get markers a
+            # reviewer can resolve in the PR. Modify/delete and similar ones do
+            # not, and `git add -A` would silently keep one side, so stop here.
+            unmarked=$(git status --porcelain | awk '$1 ~ /^(DD|AU|UD|UA|DU)$/ { print $2 }' | xargs)
+            if [ -n "$unmarked" ]; then
+              echo "::error::Resolve by hand (changed on one side, deleted on the other): ${unmarked}"
+              exit 1
+            fi
           fi
 
           # The Store fills in {PR_MERGE_DATE} inside the publish commit itself, so
