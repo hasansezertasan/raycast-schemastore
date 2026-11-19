@@ -27,6 +27,10 @@ The catalog is fetched via `useFetch` from `@raycast/utils`, which Raycast cache
 
 Targets macOS and Windows (`platforms` in `package.json`) — avoid macOS-only assumptions.
 
+## Store sync
+
+Raycast maintainers sometimes edit the extension directly in `raycast/extensions/extensions/schemastore`, and `npm run publish` stops until those edits are pulled in. `.github/workflows/sync-store.yml` runs weekly (and on demand), sparse-checks out the Store folder at the last publish and now, cherry-picks the difference onto the repo (a 3-way merge that keeps unpublished work), copies `{PR_MERGE_DATE}` dates the Store filled in, and opens a `chore/sync-store-edits` PR (a draft if a file has conflict markers).
+
 ## Conventions
 
 - TypeScript strict mode via `tsconfig.json`; React 19 and Node 22 types are installed for compatibility with the Raycast runtime.
