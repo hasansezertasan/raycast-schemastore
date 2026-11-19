@@ -1,0 +1,78 @@
+---
+name: Publish to the Raycast Store
+on:
+  # Manual only: publishing opens a public PR on raycast/extensions under the
+  # author's name, so every publish is a deliberate click (or
+  # `gh workflow run publish.yml`). The PR body, checklist and "ready for review"
+  # stay with the author.
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: publish
+  cancel-in-progress: false
+jobs:
+  publish:
+    name: Publish to the Raycast Store
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read  # check out the repository; the upstream PR uses RAYCAST_GITHUB_TOKEN
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+        with:
+          persist-credentials: false
+      - name: Require an unreleased CHANGELOG entry
+        run: |
+          # The newest heading must still carry the placeholder the Store fills
+          # in on merge; otherwise there is nothing new to publish.
+          heading=$(grep -m1 '^## ' CHANGELOG.md)
+          case "$heading" in
+            *"{PR_MERGE_DATE}") echo "Publishing: ${heading#'## '}" ;;
+            *)
+              echo "::error file=CHANGELOG.md::The newest entry (${heading}) is already released. Add a '## [Title] - {PR_MERGE_DATE}' entry first."
+              exit 1
+              ;;
+          esac
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Build
+        run: npm run build
+      - name: Publish
+        env:
+          # `npx ray token` prints this; it skips the Raycast login.
+          RAY_TOKEN: ${{ secrets.RAY_TOKEN }}
+          # Classic PAT with `public_repo`: the CLI forks raycast/extensions under
+          # the author's account and opens the PR there, which a fine-grained
+          # token cannot do on a repository the author does not own.
+          GITHUB_ACCESS_TOKEN: ${{ secrets.RAYCAST_GITHUB_TOKEN }}
+        run: |
+          if [ -z "$RAY_TOKEN" ] || [ -z "$GITHUB_ACCESS_TOKEN" ]; then
+            echo "::error::Set the RAY_TOKEN and RAYCAST_GITHUB_TOKEN repository secrets first."
+            exit 1
+          fi
+          git config --global user.name "$GITHUB_ACTOR"
+          git config --global user.email "${GITHUB_ACTOR_ID}+${GITHUB_ACTOR}@users.noreply.github.com"
+          # `npm run publish` (the same command used locally), without prompts.
+          # The default shell runs with pipefail, so a failed publish fails the step.
+          npm run publish -- --non-interactive --exit-on-error 2>&1 | tee "$RUNNER_TEMP/publish.log"
+          pr=$(grep -oE 'https://github\.com/raycast/extensions/pull/[0-9]+' "$RUNNER_TEMP/publish.log" | tail -1)
+          {
+            echo "### Published"
+            echo
+            if [ -n "$pr" ]; then
+              echo "Store PR: ${pr}"
+            else
+              echo "See the log for the Store PR link."
+            fi
+            echo
+            echo "Next: fill in the PR body and checklist, then mark it ready for review."
+          } >>"$GITHUB_STEP_SUMMARY"

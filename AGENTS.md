@@ -27,6 +27,10 @@ The catalog is fetched via `useFetch` from `@raycast/utils`, which Raycast cache
 
 Targets macOS and Windows (`platforms` in `package.json`) — avoid macOS-only assumptions.
 
+## Publishing from CI
+
+`.github/workflows/publish.yml` (manual `workflow_dispatch` on `main` only) runs `npm run publish` non-interactively after lint and build. It refuses to run unless the newest `CHANGELOG.md` heading still ends in `{PR_MERGE_DATE}`. It needs the `RAY_TOKEN` secret (from `npx ray token`) and `RAYCAST_GITHUB_TOKEN` (a classic PAT with `public_repo`, used to fork `raycast/extensions` and open the PR). The upstream PR body, checklist and "ready for review" stay with the author.
+
 ## Conventions
 
 - TypeScript strict mode via `tsconfig.json`; React 19 and Node 22 types are installed for compatibility with the Raycast runtime.
