@@ -54,6 +54,9 @@ jobs:
           # the author's account and opens the PR there, which a fine-grained
           # token cannot do on a repository the author does not own.
           GITHUB_ACCESS_TOKEN: ${{ secrets.RAYCAST_GITHUB_TOKEN }}
+        # Explicit bash adds `-o pipefail` (the unspecified default is `bash -e`),
+        # so a failed publish fails the step instead of passing through `tee`.
+        shell: bash
         run: |
           if [ -z "$RAY_TOKEN" ] || [ -z "$GITHUB_ACCESS_TOKEN" ]; then
             echo "::error::Set the RAY_TOKEN and RAYCAST_GITHUB_TOKEN repository secrets first."
@@ -61,9 +64,10 @@ jobs:
           fi
           git config --global user.name "$GITHUB_ACTOR"
           git config --global user.email "${GITHUB_ACTOR_ID}+${GITHUB_ACTOR}@users.noreply.github.com"
-          # `npm run publish` (the same command used locally), without prompts.
-          # The default shell runs with pipefail, so a failed publish fails the step.
-          npm run publish -- --non-interactive --exit-on-error 2>&1 | tee "$RUNNER_TEMP/publish.log"
+          # The locked CLI from `npm ci` (kept current by Renovate), not
+          # `npm run publish`'s `@raycast/api@latest`: unpinned code must not run
+          # with these tokens.
+          npx --no-install ray publish --non-interactive --exit-on-error 2>&1 | tee "$RUNNER_TEMP/publish.log"
           pr=$(grep -oE 'https://github\.com/raycast/extensions/pull/[0-9]+' "$RUNNER_TEMP/publish.log" | tail -1)
           {
             echo "### Published"

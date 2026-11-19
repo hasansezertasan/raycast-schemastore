@@ -33,7 +33,7 @@ Raycast maintainers sometimes edit the extension directly in `raycast/extensions
 
 ## Publishing from CI
 
-`.github/workflows/publish.yml` (manual `workflow_dispatch` on `main` only) runs `npm run publish` non-interactively after lint and build. It refuses to run unless the newest `CHANGELOG.md` heading still ends in `{PR_MERGE_DATE}`. It needs the `RAY_TOKEN` secret (from `npx ray token`) and `RAYCAST_GITHUB_TOKEN` (a classic PAT with `public_repo`, used to fork `raycast/extensions` and open the PR). The upstream PR body, checklist and "ready for review" stay with the author.
+`.github/workflows/publish.yml` (manual `workflow_dispatch` on `main` only) runs the locked `ray publish` CLI (not `npm run publish`'s `@raycast/api@latest`) non-interactively after lint and build. It refuses to run unless the newest `CHANGELOG.md` heading still ends in `{PR_MERGE_DATE}`. It needs the `RAY_TOKEN` secret (from `npx ray token`) and `RAYCAST_GITHUB_TOKEN` (a classic PAT with `public_repo`, used to fork `raycast/extensions` and open the PR). The upstream PR body, checklist and "ready for review" stay with the author.
 
 ## Conventions
 
